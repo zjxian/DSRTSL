@@ -10,12 +10,15 @@ using System.Windows.Forms;
 using System.IO;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
+using System.Management;
 namespace DSRTSL
 {
     public partial class MainForm : Form
     {
         globalKeyboardHook gkh = new globalKeyboardHook();
         config conf;
+        bool conn_disabled = false;
+        List<String> adapterguids = new List<string>();
         string configfilepath;
         public MainForm()
         {
@@ -25,7 +28,7 @@ namespace DSRTSL
         private void MainForm_Load(object sender, EventArgs e)
         {
             gkh.HookedKeys.Add(Keys.F5);
-            gkh.HookedKeys.Add(Keys.F8);
+            gkh.HookedKeys.Add(Keys.F8);            
             gkh.KeyUp += Gkh_KeyUp;
             string apppath =new Uri( System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().CodeBase)).LocalPath;
             configfilepath = apppath + "\\config.bin";
@@ -48,6 +51,18 @@ namespace DSRTSL
             {
                 conf = null;
             }
+            SelectQuery query = new SelectQuery("Win32_NetworkAdapter", "NetConnectionStatus=2");
+            ManagementObjectSearcher search = new ManagementObjectSearcher(query);
+            foreach (ManagementObject result in search.Get())
+            {
+                NetworkAdapter adapter = new NetworkAdapter(result); 
+                if (0==adapter.AdapterTypeId)
+                {
+                    adapterguids.Add(adapter.GUID);
+                }
+            }
+            search.Dispose();
+            
         }
 
         private void Gkh_KeyUp(object sender, KeyEventArgs e)
@@ -70,7 +85,7 @@ namespace DSRTSL
             {
                 string latest = conf.backupdirpath + "\\latest";
                 File.Copy(latest + "\\" + Path.GetFileName(conf.savefilepath),conf.savefilepath,true);
-            }
+            }          
 
         }
 
@@ -105,6 +120,41 @@ namespace DSRTSL
                 Stream stream = new FileStream(configfilepath, FileMode.Create);
                 formatter.Serialize(stream, conf);
                 stream.Close();
+            }
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            foreach (string guid in adapterguids)
+            {
+                SelectQuery query = new SelectQuery("Win32_NetworkAdapter");
+                ManagementObjectSearcher search = new ManagementObjectSearcher(query);
+                foreach (ManagementObject result in search.Get())
+                {
+                    NetworkAdapter adapter = new NetworkAdapter(result);
+                    if (adapter.GUID == guid)
+                    {
+                        if (conn_disabled)
+                        {
+                            //enable
+                            adapter.Enable();
+                            conn_disabled = false;
+                            button3.Text = "Disable Network";
+                        }
+                        else
+                        {
+                            //disable
+                            adapter.Disable();
+                            conn_disabled = true;
+                            button3.Text = "Enable Network";
+                        }
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+                search.Dispose();
             }
         }
     }
